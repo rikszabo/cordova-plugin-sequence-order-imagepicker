@@ -42,6 +42,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import com.synconset.FakeR;
 import android.app.AlertDialog;
@@ -77,6 +80,7 @@ import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
+import android.media.ExifInterface;
 
 public class MultiImageChooserActivity extends AppCompatActivity implements
         OnItemClickListener,
@@ -90,7 +94,8 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
     public static final String HEIGHT_KEY = "HEIGHT";
     public static final String QUALITY_KEY = "QUALITY";
     public static final String OUTPUT_TYPE_KEY = "OUTPUT_TYPE";
-
+    public static int finalWidth = 0;
+    public static int finalHeight = 0;
     private ImageAdapter ia;
 
     private Cursor imagecursor, actualimagecursor;
@@ -117,6 +122,9 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
     private int selectedColor = 0xff32b2e1;
     private boolean shouldRequestThumb = true;
 
+    private int outputWidth = 0;
+    private int outputHeight = 0;
+
     private FakeR fakeR;
     private View abDoneView;
     private View abDiscardView;
@@ -126,6 +134,8 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        System.out.println("fileNames");
+        System.out.println(fileNames);
         fakeR = new FakeR(this);
         setContentView(fakeR.getId("layout", "multiselectorgrid"));
         fileNames.clear();
@@ -425,6 +435,7 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
 
     /*********************
     * Nested Classes
+    * Last modified date: 2020, Oct 07 by @rikszabo.
     ********************/
     private class SquareImageView extends ImageView {
         public SquareImageView(Context context) {
@@ -515,9 +526,16 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
             try {
                 Iterator<Entry<String, Integer>> i = fileNames.iterator();
                 Bitmap bmp;
+
                 while (i.hasNext()) {
                     Entry<String, Integer> imageInfo = i.next();
                     File file = new File(imageInfo.getKey());
+
+                    System.out.println("file");
+                    System.out.println(file);
+
+                    File fileCopy = file;
+
                     int rotate = imageInfo.getValue();
                     BitmapFactory.Options options = new BitmapFactory.Options();
                     options.inSampleSize = 1;
@@ -525,11 +543,36 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                     BitmapFactory.decodeFile(file.getAbsolutePath(), options);
                     int width = options.outWidth;
                     int height = options.outHeight;
+                    System.out.println("width");
+                    System.out.println(width);
+                    System.out.println("height");
+                    System.out.println(height);
+                    outputWidth = width;
+                    outputHeight = height;
                     float scale = calculateScale(width, height);
 
+                    ExifInterface exif = new ExifInterface(fileCopy.toString());   
+                    int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1);
+                    System.out.println("ExifInteface .........");
+                    System.out.println(orientation);
+
+
+                    String model = android.os.Build.MODEL;
+                    int version = android.os.Build.VERSION.SDK_INT;
+
+                    boolean isSamsung = model.contains("SM-");
+                    String firstElement = String.valueOf(model.charAt(0));
+                    boolean isXiaomi = firstElement.contains("M");
+                    int tmp = 0;
+
+                    finalWidth = width;
+                    finalHeight = height;
+                        System.out.println(finalHeight);
+                        System.out.println(finalWidth);
+                  
                     if (scale < 1) {
-                        int finalWidth = (int)(width * scale);
-                        int finalHeight = (int)(height * scale);
+                        finalWidth = (int)(width * scale);
+                        finalHeight = (int)(height * scale);
                         int inSampleSize = calculateInSampleSize(options, finalWidth, finalHeight);
                         options = new BitmapFactory.Options();
                         options.inSampleSize = inSampleSize;
@@ -568,8 +611,43 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
 
                     if (outputType == OutputType.FILE_URI) {
                         file = storeImage(bmp, file.getName());
-                        al.add(Uri.fromFile(file).toString());
+                        boolean camera = fileCopy.toString().contains("Camera");
 
+                        if(isSamsung){
+                            if(version >= 23 && camera == true){
+                                if(orientation == 6){
+                                    outputWidth = (int)finalHeight;
+                                    outputHeight = (int)finalWidth;   
+                                    System.out.println("soutputWidth");
+                                    System.out.println(outputWidth);                     
+                                }
+                                if(orientation == 1 ){
+                                    outputHeight = (int)finalHeight;
+                                    outputWidth = (int)finalWidth;
+                                    System.out.println("soutputHeight");
+                                    System.out.println(outputHeight); 
+                                }
+                            }
+                        }
+                      
+                        if(isXiaomi){
+                            if(version > 28 && camera == true){
+                                if(orientation == 6){
+                                    outputWidth = (int)finalHeight;
+                                    outputHeight = (int)finalWidth;
+                                    System.out.println("moutputWidth");
+                                    System.out.println(outputWidth);                            
+                                }
+                                if(orientation == 1 ){
+                                    outputHeight = (int)finalHeight;
+                                    outputWidth = (int)finalWidth;
+                                    System.out.println("moutputHeight");
+                                    System.out.println(outputHeight); 
+                                }
+                            }
+                        }
+
+                        al.add(Uri.fromFile(file).toString() + "#size#" + String.valueOf(outputWidth) + "#size#" + String.valueOf(outputHeight));
                     } else if (outputType == OutputType.BASE64_STRING) {
                         al.add(getBase64OfImage(bmp));
                     }
@@ -625,6 +703,7 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                                       int rotate,
                                       boolean shouldScale) throws IOException, OutOfMemoryError {
             Bitmap bmp;
+
             if (options == null) {
                 bmp = BitmapFactory.decodeFile(file.getAbsolutePath());
             } else {
@@ -645,7 +724,7 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
                 matrix.setRotate(rotate);
                 bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), matrix, true);
             }
-
+ 
             return bmp;
         }
 
@@ -657,20 +736,18 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
         *
         * The software is open source, MIT Licensed.
         * Copyright (C) 2012, webXells GmbH All Rights Reserved.
+        * Last modified date: 2020, July 13 by @rikszabo.
         */
         private File storeImage(Bitmap bmp, String fileName) throws IOException {
             int index = fileName.lastIndexOf('.');
-            String name = fileName.substring(0, index);
             String ext = fileName.substring(index);
-            File file = File.createTempFile("tmp_" + name, ext);
+            File file = File.createTempFile("img_", ext);
             OutputStream outStream = new FileOutputStream(file);
-
             if (ext.compareToIgnoreCase(".png") == 0) {
                 bmp.compress(Bitmap.CompressFormat.PNG, quality, outStream);
             } else {
                 bmp.compress(Bitmap.CompressFormat.JPEG, quality, outStream);
             }
-
             outStream.flush();
             outStream.close();
             return file;
@@ -678,9 +755,11 @@ public class MultiImageChooserActivity extends AppCompatActivity implements
 
         private Bitmap getResizedBitmap(Bitmap bm, float factor) {
             int width = bm.getWidth();
+
             int height = bm.getHeight();
             // create a matrix for the manipulation
             Matrix matrix = new Matrix();
+
             // resize the bit map
             matrix.postScale(factor, factor);
             // recreate the new Bitmap

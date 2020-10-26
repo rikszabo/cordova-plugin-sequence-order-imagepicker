@@ -234,7 +234,12 @@ typedef enum : NSUInteger {
                 if(self.outputType == BASE64_STRING){
                     [result_all addObject:[data base64EncodedStringWithOptions:0]];
                 } else {
-                    [result_all addObject:[[NSURL fileURLWithPath:filePath] absoluteString]];
+                    //[result_all addObject:[[NSURL fileURLWithPath:filePath] absoluteString]];
+                    int height = (int) image.size.height;
+                    int width = (int) image.size.width;
+                    NSString *pathWithSize = [NSString stringWithFormat:@"%@%@%@%d%@%d", @"file://", filePath, @"#size#", width, @"#size#", height];
+                    [result_all addObject:pathWithSize];
+                    NSLog(@"result: %@", pathWithSize);
                 }
             }
         }
